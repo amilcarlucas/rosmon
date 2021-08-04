@@ -10,6 +10,7 @@
 #include <stdexcept>
 
 #include <sys/time.h>
+#include <sys/stat.h>
 
 #include <fmt/format.h>
 
@@ -50,6 +51,17 @@ void Logger::log(const LogEvent& event)
 	unsigned int len = event.message.length();
 	while(len != 0 && (event.message[len-1] == '\n' || event.message[len-1] == '\r'))
 		len--;
+
+	// because of this problem:
+	// https://serverfault.com/questions/221337/logrotate-successful-original-file-goes-back-to-original-size
+	// we need this hack, but a better solution is at:
+	// https://stackoverflow.com/questions/462122/detecting-that-log-file-has-been-deleted-or-truncated-on-posix-systems
+	struct stat file_stat;
+	int status = fstat(fileno(m_file), &file_stat);
+	if (status == 0 && file_stat.st_size == 0) {
+		// rewind the file pointer if the log file has been "copytruncated" by something like logrotate
+		rewind(m_file);
+	}
 
 	fmt::print(m_file, "{}.{:03d}: {:>20}: ",
 		timeString, tv.tv_usec / 1000,
